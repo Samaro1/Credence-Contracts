@@ -96,7 +96,13 @@ fn test_validate_duration_u64_max() {
 fn test_create_bond_min_duration() {
     let e = Env::default();
     let (client, _admin, identity, ..) = test_helpers::setup_with_token(&e);
-    let bond = client.create_bond_with_rolling(&identity, &1000000_i128, &MIN_BOND_DURATION, &false, &0_u64);
+    let bond = client.create_bond_with_rolling(
+        &identity,
+        &1000000_i128,
+        &MIN_BOND_DURATION,
+        &false,
+        &0_u64,
+    );
     assert!(bond.active);
     assert_eq!(bond.bond_duration, MIN_BOND_DURATION);
 }
@@ -106,7 +112,13 @@ fn test_create_bond_min_duration() {
 fn test_create_bond_max_duration() {
     let e = Env::default();
     let (client, _admin, identity, ..) = test_helpers::setup_with_token(&e);
-    let bond = client.create_bond_with_rolling(&identity, &1000000_i128, &MAX_BOND_DURATION, &false, &0_u64);
+    let bond = client.create_bond_with_rolling(
+        &identity,
+        &1000000_i128,
+        &MAX_BOND_DURATION,
+        &false,
+        &0_u64,
+    );
     assert!(bond.active);
     assert_eq!(bond.bond_duration, MAX_BOND_DURATION);
 }
@@ -117,7 +129,8 @@ fn test_create_bond_typical_duration() {
     let e = Env::default();
     let (client, _admin, identity, ..) = test_helpers::setup_with_token(&e);
     let thirty_days = 30 * 86_400_u64;
-    let bond = client.create_bond_with_rolling(&identity, &1000000_i128, &thirty_days, &false, &0_u64);
+    let bond =
+        client.create_bond_with_rolling(&identity, &1000000_i128, &thirty_days, &false, &0_u64);
     assert!(bond.active);
     assert_eq!(bond.bond_duration, thirty_days);
 }
@@ -172,7 +185,13 @@ fn test_create_bond_above_max_duration_rejected() {
 fn test_create_rolling_bond_valid_duration() {
     let e = Env::default();
     let (client, _admin, identity, ..) = test_helpers::setup_with_token(&e);
-    let bond = client.create_bond_with_rolling(&identity, &1000000_i128, &MIN_BOND_DURATION, &true, &3600_u64);
+    let bond = client.create_bond_with_rolling(
+        &identity,
+        &1000000_i128,
+        &MIN_BOND_DURATION,
+        &true,
+        &3600_u64,
+    );
     assert!(bond.active);
     assert!(bond.is_rolling);
     assert_eq!(bond.bond_duration, MIN_BOND_DURATION);

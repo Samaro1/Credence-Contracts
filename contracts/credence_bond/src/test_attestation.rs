@@ -132,7 +132,14 @@ fn test_add_attestation_basic() {
     let (client, attester, contract_id) = setup_with_contract(&e);
     let subject = Address::generate(&e);
     let data = String::from_str(&e, "verified identity");
-    let att = add(&client, &e, &contract_id, &attester, &subject, "verified identity");
+    let att = add(
+        &client,
+        &e,
+        &contract_id,
+        &attester,
+        &subject,
+        "verified identity",
+    );
     assert_eq!(att.id, 0);
     assert_eq!(att.verifier, attester);
     assert_eq!(att.identity, subject);
@@ -209,7 +216,14 @@ fn test_unauthorized_attester_rejected() {
     client.initialize(&admin);
     let unauthorized = Address::generate(&e);
     let subject = Address::generate(&e);
-    add(&client, &e, &contract_id, &unauthorized, &subject, "should fail");
+    add(
+        &client,
+        &e,
+        &contract_id,
+        &unauthorized,
+        &subject,
+        "should fail",
+    );
 }
 
 #[test]
@@ -220,7 +234,14 @@ fn test_unregistered_attester_cannot_attest() {
     let subject = Address::generate(&e);
     add(&client, &e, &contract_id, &attester, &subject, "ok");
     client.unregister_attester(&attester);
-    add(&client, &e, &contract_id, &attester, &subject, "should fail");
+    add(
+        &client,
+        &e,
+        &contract_id,
+        &attester,
+        &subject,
+        "should fail",
+    );
 }
 
 // ============================================================================

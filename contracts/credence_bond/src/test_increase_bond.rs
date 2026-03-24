@@ -178,7 +178,8 @@ fn test_increase_bond_preserves_other_fields() {
     // Approve for create_bond (1000) and increase_bond (150)
     token_client.approve(&identity, &contract_id, &2000_i128, &1000_u32);
 
-    let original = client.create_bond_with_rolling(&identity, &1000000_i128, &86400_u64, &true, &7200_u64);
+    let original =
+        client.create_bond_with_rolling(&identity, &1000000_i128, &86400_u64, &true, &7200_u64);
 
     let updated = client.increase_bond(&identity, &150_i128);
 

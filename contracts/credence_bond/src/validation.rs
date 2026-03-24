@@ -10,10 +10,10 @@ pub const MIN_BOND_AMOUNT: i128 = 1_000_000; // 1 token (assuming 6 decimals lik
 pub const MAX_BOND_AMOUNT: i128 = 100_000_000_000_000; // 100M tokens (assuming 6 decimals)
 
 /// Validates that a bond amount is within acceptable bounds.
-/// 
+///
 /// # Arguments
 /// * `amount` - The bond amount to validate
-/// 
+///
 /// # Panics
 /// * If amount is less than MIN_BOND_AMOUNT
 /// * If amount is greater than MAX_BOND_AMOUNT
@@ -22,17 +22,21 @@ pub fn validate_bond_amount(amount: i128) {
     if amount < 0 {
         panic!("bond amount cannot be negative");
     }
-    
+
     if amount < MIN_BOND_AMOUNT {
-        panic!("bond amount below minimum required: {} (minimum: {})", amount, MIN_BOND_AMOUNT);
+        panic!(
+            "bond amount below minimum required: {} (minimum: {})",
+            amount, MIN_BOND_AMOUNT
+        );
     }
-    
+
     if amount > MAX_BOND_AMOUNT {
-        panic!("bond amount exceeds maximum allowed: {} (maximum: {})", amount, MAX_BOND_AMOUNT);
+        panic!(
+            "bond amount exceeds maximum allowed: {} (maximum: {})",
+            amount, MAX_BOND_AMOUNT
+        );
     }
 }
-
-
 
 #[cfg(test)]
 mod tests {
@@ -69,8 +73,6 @@ mod tests {
     fn test_validate_bond_amount_above_maximum() {
         validate_bond_amount(MAX_BOND_AMOUNT + 1);
     }
-
-
 }
 
 /// Minimum bond duration in seconds (1 day = 86_400 seconds).

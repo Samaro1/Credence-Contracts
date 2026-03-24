@@ -5,7 +5,13 @@ use crate::*;
 use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::{Env, String};
 
-fn setup(e: &Env) -> (CredenceBondClient<'_>, soroban_sdk::Address, soroban_sdk::Address) {
+fn setup(
+    e: &Env,
+) -> (
+    CredenceBondClient<'_>,
+    soroban_sdk::Address,
+    soroban_sdk::Address,
+) {
     e.mock_all_auths();
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(e, &contract_id);
