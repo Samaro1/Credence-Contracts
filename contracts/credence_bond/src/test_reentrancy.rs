@@ -185,7 +185,7 @@ use withdraw_attacker::{WithdrawAttacker, WithdrawAttackerClient};
 // ---------------------------------------------------------------------------
 fn setup_bond(e: &Env) -> (Address, Address, Address) {
     let (client, admin, identity, _token_id, bond_id) = test_helpers::setup_with_token(e);
-    client.create_bond_with_rolling(&identity, &10000000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond_with_rolling(&identity, &10000_i128, &86400_u64, &false, &0_u64);
     (bond_id, admin, identity)
 }
 
