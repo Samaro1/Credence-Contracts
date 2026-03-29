@@ -16,10 +16,12 @@
 
 mod errors;
 mod types;
+mod validation;
 
 use credence_math::{add_i128, split_bps};
 use errors::*;
 use types::{DataKey, FeeConfig, FixedBond, OracleSafety};
+use validation::validate_recipient;
 
 use soroban_sdk::{contract, contractimpl, token::TokenClient, Address, Env, Symbol};
 
@@ -178,6 +180,10 @@ impl FixedDurationBond {
 
         let token = get_token(&e);
         let contract = e.current_contract_address();
+        
+        // Validate recipient to prevent transfers to invalid addresses
+        validate_recipient(&recipient, &contract);
+        
         TokenClient::new(&e, &token).transfer(&contract, &recipient, &accrued);
 
         e.events().publish(
@@ -332,6 +338,10 @@ impl FixedDurationBond {
 
         let token = get_token(&e);
         let contract = e.current_contract_address();
+        
+        // Validate recipient to prevent transfers to invalid addresses
+        validate_recipient(&owner, &contract);
+        
         TokenClient::new(&e, &token).transfer(&contract, &owner, &bond.amount);
 
         e.events()
@@ -384,6 +394,8 @@ impl FixedDurationBond {
         let token_client = TokenClient::new(&e, &token);
 
         // Return net amount to owner.
+        // Validate recipient to prevent transfers to invalid addresses
+        validate_recipient(&owner, &contract);
         token_client.transfer(&contract, &owner, &net_amount);
 
         // Send penalty to treasury if configured.
@@ -393,6 +405,8 @@ impl FixedDurationBond {
                 .instance()
                 .get::<_, FeeConfig>(&DataKey::FeeConfig)
             {
+                // Validate treasury recipient as well
+                validate_recipient(&cfg.treasury, &contract);
                 token_client.transfer(&contract, &cfg.treasury, &penalty);
             }
         }

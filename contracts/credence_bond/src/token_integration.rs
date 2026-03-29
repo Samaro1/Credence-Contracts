@@ -2,6 +2,7 @@
 //! Centralizes token configuration, allowance checks, and transfer operations.
 
 use crate::DataKey;
+use crate::validation::validate_recipient;
 use soroban_sdk::token::TokenClient;
 use soroban_sdk::{Address, Env, String, Symbol};
 
@@ -98,6 +99,7 @@ pub fn transfer_into_contract(e: &Env, owner: &Address, amount: i128) {
 
 /// @notice Transfers tokens from the bond contract to recipient.
 /// @dev Used for standard withdrawals and penalty/treasury transfers.
+/// Validates recipient to prevent transfers to invalid addresses.
 pub fn transfer_from_contract(e: &Env, recipient: &Address, amount: i128) {
     if amount < 0 {
         panic!("amount must be non-negative");
@@ -107,5 +109,11 @@ pub fn transfer_from_contract(e: &Env, recipient: &Address, amount: i128) {
     }
 
     let contract = e.current_contract_address();
+    
+    // Validate recipient address before transferring tokens.
+    // This prevents transfers to the contract itself or other invalid addresses.
+    // See validation::validate_recipient for security details.
+    validate_recipient(recipient, &contract);
+    
     token_client(e).transfer(&contract, recipient, &amount);
 }
