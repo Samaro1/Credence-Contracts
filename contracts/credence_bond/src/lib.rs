@@ -451,7 +451,11 @@ impl CredenceBond {
         let old_tier = BondTier::Bronze;
         let new_tier = tiered_bond::get_tier_for_amount(net_amount);
         tiered_bond::emit_tier_change_if_needed(&e, &identity, old_tier, new_tier);
+        
+        // Emit both old and new events for backward compatibility during migration
         events::emit_bond_created(&e, &identity, amount, duration, is_rolling);
+        events::emit_bond_created_v2(&e, &identity, amount, duration, is_rolling, bond_start);
+        
         bond
     }
 
@@ -693,7 +697,11 @@ impl CredenceBond {
         let new_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount);
         tiered_bond::emit_tier_change_if_needed(&e, &bond.identity, old_tier, new_tier);
         e.storage().instance().set(&key, &bond);
+        
+        // Emit both old and new events for backward compatibility during migration
         events::emit_bond_withdrawn(&e, &bond.identity, amount, bond.bonded_amount);
+        events::emit_bond_withdrawn_v2(&e, &bond.identity, amount, bond.bonded_amount, e.ledger().timestamp(), false, 0);
+        
         bond
     }
 
@@ -765,6 +773,12 @@ impl CredenceBond {
         let new_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount);
         tiered_bond::emit_tier_change_if_needed(&e, &bond.identity, old_tier, new_tier);
         e.storage().instance().set(&key, &bond);
+        
+        // Emit both old and new events for backward compatibility during migration
+        // For early withdrawal, we emit the v2 event with penalty information
+        events::emit_bond_withdrawn(&e, &bond.identity, amount, bond.bonded_amount);
+        events::emit_bond_withdrawn_v2(&e, &bond.identity, amount, bond.bonded_amount, e.ledger().timestamp(), true, penalty);
+        
         bond
     }
 
@@ -954,31 +968,27 @@ impl CredenceBond {
 
         let key = DataKey::Bond;
         let mut bond: IdentityBond = e
-            .storage()
-            .instance()
-            .get(&key)
-            .unwrap_or_else(|| panic!("no bond"));
+}
 
-        bond.identity.require_auth();
-
-        // Overflow check before token transfer (CEI pattern)
-        let new_bonded = bond
-            .bonded_amount
-            .checked_add(amount)
-            .expect("top-up caused overflow");
-
-        let old_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount);
-        bond.bonded_amount = new_bonded;
-        token_integration::transfer_into_contract(&e, &bond.identity, amount);
-        let new_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount);
-        tiered_bond::emit_tier_change_if_needed(&e, &bond.identity, old_tier, new_tier);
-        events::emit_bond_increased(&e, &bond.identity, amount, bond.bonded_amount);
-
-        e.storage().instance().set(&key, &bond);
-        bond
-    }
-
-    pub fn increase_bond(e: Env, caller: Address, amount: i128) -> IdentityBond {
+pub fn extend_duration(e: Env, additional_duration: u64) -> IdentityBond {
+    let key = DataKey::Bond;
+    let mut bond = e
+        .storage()
+        .instance()
+        .get::<_, IdentityBond>(&key)
+        .unwrap_or_else(|| panic!("no bond"));
+    bond.identity.require_auth();
+    bond.bond_duration = bond
+        .bond_duration
+        .checked_add(additional_duration)
+        .expect("duration overflow");
+    let _end = bond
+        .bond_start
+        .checked_add(bond.bond_duration)
+        .expect("bond end overflow");
+    e.storage().instance().set(&key, &bond);
+    bond
+}
         caller.require_auth();
         if amount <= 0 {
             panic!("amount must be positive");
