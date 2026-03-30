@@ -4,9 +4,13 @@
 //! Tracks fund sources (protocol fees vs slashed funds) and emits treasury events.
 
 use credence_errors::ContractError;
-use soroban_sdk::{contract, contractimpl, contracttype, panic_with_error, Address, Env, Symbol};
+use soroban_sdk::token::TokenClient;
+use soroban_sdk::{
+    contract, contractimpl, contracttype, panic_with_error, Address, Bytes, Env, Symbol,
+};
 
 use crate::pausable;
+use crate::receiver::{FlashLoanReceiverClient, FLASH_LOAN_SUCCESS};
 
 /// Fund source for accounting and reporting.
 #[contracttype]
@@ -65,6 +69,12 @@ pub enum DataKey {
     Approval(u64, Address),
     /// Approval count per proposal (cached for execution check).
     ApprovalCount(u64),
+    /// Token address used for treasury operations.
+    Token,
+    /// Flash loan fee in basis points (e.g. 10 = 0.1%).
+    FlashLoanFeeBps,
+    /// Reentrancy guard.
+    IsLocked,
 }
 
 #[contract]
@@ -98,8 +108,27 @@ impl CredenceTreasury {
         e.storage()
             .instance()
             .set(&DataKey::ProposalCounter, &0_u64);
+        e.storage().instance().set(&DataKey::FlashLoanFeeBps, &0_u32);
+        e.storage().instance().set(&DataKey::IsLocked, &false);
         e.events()
             .publish((Symbol::new(&e, "treasury_initialized"),), admin);
+    }
+
+    /// Set the token address for treasury operations.
+    pub fn set_token(e: Env, token: Address) {
+        let admin = Self::get_admin(e.clone());
+        admin.require_auth();
+        e.storage().instance().set(&DataKey::Token, &token);
+    }
+
+    /// Set the flash loan fee in basis points.
+    pub fn set_flash_loan_fee(e: Env, fee_bps: u32) {
+        let admin = Self::get_admin(e.clone());
+        admin.require_auth();
+        if fee_bps > 10000 {
+            panic_with_error!(&e, ContractError::InvalidPenaltyBps);
+        }
+        e.storage().instance().set(&DataKey::FlashLoanFeeBps, &fee_bps);
     }
 
     /// Receive protocol fee or slashed funds. Caller must be admin or an authorized depositor.
@@ -444,6 +473,69 @@ impl CredenceTreasury {
         );
     }
 
+    /// Execute a flash loan. Transfers funds to receiver, calls on_flash_loan, and verifies repayment.
+    /// @param initiator The address initiating the loan (must auth)
+    /// @param receiver  The contract receiving the loan
+    /// @param amount    The amount to loan
+    /// @param data      Arbitrary data to pass to the receiver
+    pub fn flash_loan(e: Env, initiator: Address, receiver: Address, amount: i128, data: Bytes) {
+        pausable::require_not_paused(&e);
+        initiator.require_auth();
+
+        if amount <= 0 {
+            panic_with_error!(&e, ContractError::AmountMustBePositive);
+        }
+
+        if Self::is_locked(e.clone()) {
+            panic_with_error!(&e, ContractError::ReentrancyDetected);
+        }
+        e.storage().instance().set(&DataKey::IsLocked, &true);
+
+        let token_id: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Token)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotInitialized));
+        let token_client = TokenClient::new(&e, &token_id);
+
+        let fee_bps: u32 = e
+            .storage()
+            .instance()
+            .get(&DataKey::FlashLoanFeeBps)
+            .unwrap_or(0);
+        let fee = amount
+            .checked_mul(fee_bps as i128)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow))
+            / 10000;
+
+        // 1. Record balance before
+        let balance_before = token_client.balance(&e.current_contract_address());
+
+        // 2. Transfer to receiver
+        token_client.transfer(&e.current_contract_address(), &receiver, &amount);
+
+        // 3. Callback to receiver
+        let receiver_client = FlashLoanReceiverClient::new(&e, &receiver);
+        let return_val = receiver_client.on_flash_loan(&initiator, &token_id, &amount, &fee, &data);
+
+        // 4. Harden: check magic value
+        if return_val != Symbol::new(&e, FLASH_LOAN_SUCCESS) {
+            panic_with_error!(&e, ContractError::InvalidFlashLoanCallback);
+        }
+
+        // 5. Harden: Verify settlement (principal + fee)
+        let balance_after = token_client.balance(&e.current_contract_address());
+        let required = balance_before
+            .checked_add(fee)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
+
+
+        e.events().publish(
+            (Symbol::new(&e, "flash_loan"), initiator),
+            (receiver, token_id, amount, fee),
+        );
+    }
+
     /// Get total treasury balance.
     pub fn get_balance(e: Env) -> i128 {
         e.storage()
@@ -539,5 +631,29 @@ impl CredenceTreasury {
 
     pub fn execute_pause_proposal(e: Env, proposal_id: u64) {
         pausable::execute_pause_proposal(&e, proposal_id)
+    }
+
+    /// Check if the contract is currently locked (for reentrancy protection).
+    pub fn is_locked(e: Env) -> bool {
+        e.storage()
+            .instance()
+            .get(&DataKey::IsLocked)
+            .unwrap_or(false)
+    }
+
+    /// Get the current flash loan fee in basis points.
+    pub fn get_flash_loan_fee(e: Env) -> u32 {
+        e.storage()
+            .instance()
+            .get(&DataKey::FlashLoanFeeBps)
+            .unwrap_or(0)
+    }
+
+    /// Get the token address used for treasury operations.
+    pub fn get_token(e: Env) -> Address {
+        e.storage()
+            .instance()
+            .get(&DataKey::Token)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotInitialized))
     }
 }
