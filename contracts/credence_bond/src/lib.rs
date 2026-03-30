@@ -38,7 +38,7 @@ use crate::access_control::{
     add_verifier_role, is_verifier, remove_verifier_role, require_verifier,
 };
 
-pub use batch::{BatchBondParams, BatchBondResult, MAX_BATCH_BOND_SIZE};
+pub use batch::{BatchBondParams, BatchBondResult};
 pub use evidence::{Evidence, EvidenceType};
 pub use types::Attestation;
 
