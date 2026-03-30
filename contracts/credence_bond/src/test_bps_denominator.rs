@@ -95,7 +95,7 @@ fn early_exit_penalty_full_remaining_equals_base_penalty() {
 
     let amount = 100_000_i128;
     let penalty_bps = 200_u32; // 2 %
-    // remaining == total => penalty == base
+                               // remaining == total => penalty == base
     let duration = 100_u64;
     let penalty = calculate_penalty(amount, duration, duration, penalty_bps);
     let base = math::bps(amount, penalty_bps, "mul", "div");
