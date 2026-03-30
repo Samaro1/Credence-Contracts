@@ -274,6 +274,21 @@ pub enum ContractError {
     /// Contracts: treasury
     InsufficientApprovals = 605,
 
+    /// Unauthorized caller attempted restricted operation.
+    /// Replaces: panic!("unauthorized")
+    /// Contracts: treasury
+    Unauthorized = 606,
+
+    /// Invalid address provided (e.g., zero address).
+    /// Replaces: panic!("invalid address")
+    /// Contracts: treasury
+    InvalidAddress = 607,
+
+    /// Rescue amount exceeds available rescueable balance.
+    /// Replaces: panic!("exceeds rescueable amount")
+    /// Contracts: treasury
+    ExceedsRescueableAmount = 608,
+
     // --- Arithmetic (700-799) ---
     /// Integer overflow detected during a checked arithmetic operation.
     /// Replaces: .expect("... overflow")
@@ -349,7 +364,10 @@ impl ErrorExt for ContractError {
             | ContractError::InsufficientTreasuryBalance
             | ContractError::ProposalNotFound
             | ContractError::ProposalAlreadyExecuted
-            | ContractError::InsufficientApprovals => ErrorCategory::Treasury,
+            | ContractError::InsufficientApprovals
+            | ContractError::Unauthorized
+            | ContractError::InvalidAddress
+            | ContractError::ExceedsRescueableAmount => ErrorCategory::Treasury,
 
             ContractError::Overflow | ContractError::Underflow => ErrorCategory::Arithmetic,
         }
@@ -405,7 +423,9 @@ impl ErrorExt for ContractError {
             }
             ContractError::AlreadyDeactivated => "Record is already in the deactivated state",
             ContractError::AlreadyActive => "Record is already in the active state",
-            ContractError::InvalidContractAddress => "Provided contract address is not a deployed contract",
+            ContractError::InvalidContractAddress => {
+                "Provided contract address is not a deployed contract"
+            }
             ContractError::ExpiryInPast => "Delegation expiry must be in the future",
             ContractError::DelegationNotFound => "No delegation found for the given key",
             ContractError::AlreadyRevoked => "Delegation has already been revoked",
@@ -423,6 +443,9 @@ impl ErrorExt for ContractError {
             ContractError::InsufficientApprovals => {
                 "Proposal does not have enough approvals to execute"
             }
+            ContractError::Unauthorized => "Unauthorized caller attempted restricted operation",
+            ContractError::InvalidAddress => "Invalid address provided (e.g., zero address)",
+            ContractError::ExceedsRescueableAmount => "Rescue amount exceeds available rescueable balance",
             ContractError::Overflow => "Integer overflow in checked arithmetic",
             ContractError::Underflow => "Integer underflow in checked arithmetic",
         }

@@ -10,8 +10,8 @@
 //! - Comprehensive event emission
 //! - Gas-optimized claim operations
 
-use soroban_sdk::{contracttype, Address, Env, Map, Symbol, Vec};
 use crate::{events, DataKey};
+use soroban_sdk::{contracttype, Address, Env, Map, Symbol, Vec};
 
 /// Maximum number of claims that can be processed in a single batch
 const MAX_BATCH_CLAIMS: u32 = 50;
@@ -75,17 +75,17 @@ impl DataKey {
     pub const fn pending_claims(user: &Address) -> DataKey {
         DataKey::PendingClaims(user.clone())
     }
-    
+
     /// Total claimable amount for a user: DataKey::ClaimableAmount(user) -> i128
     pub const fn claimable_amount(user: &Address) -> DataKey {
         DataKey::ClaimableAmount(user.clone())
     }
-    
+
     /// Claim history counter: DataKey::ClaimCounter -> u64
     pub const fn claim_counter() -> DataKey {
         DataKey::ClaimCounter
     }
-    
+
     /// Individual claim by ID: DataKey::ClaimById(claim_id) -> PendingClaim
     pub const fn claim_by_id(claim_id: u64) -> DataKey {
         DataKey::ClaimById(claim_id)
@@ -118,10 +118,10 @@ pub fn add_pending_claim(
 
     // Get next claim ID
     let claim_id = get_next_claim_id(e);
-    
+
     let now = e.ledger().timestamp();
     let expires_at = now + DEFAULT_CLAIM_EXPIRY;
-    
+
     let claim = PendingClaim {
         claim_id,
         claim_type,
@@ -144,32 +144,32 @@ pub fn add_pending_claim(
         .persistent()
         .get(&DataKey::PendingClaims(user.clone()))
         .unwrap_or(Vec::new(e));
-    
+
     claims.push_back(claim.clone());
-    
+
     // Update storage
     e.storage()
         .persistent()
         .set(&DataKey::PendingClaims(user.clone()), &claims);
-    
+
     // Update total claimable amount
     let current_total: i128 = e
         .storage()
         .persistent()
         .get(&DataKey::ClaimableAmount(user.clone()))
         .unwrap_or(0);
-    
+
     let new_total = current_total
         .checked_add(amount)
         .expect("claimable amount overflow");
-    
+
     e.storage()
         .persistent()
         .set(&DataKey::ClaimableAmount(user.clone()), &new_total);
 
     // Emit event
     events::emit_claim_added(e, user, &claim);
-    
+
     claim_id
 }
 
@@ -181,9 +181,7 @@ fn get_next_claim_id(e: &Env) -> u64 {
         .get(&DataKey::ClaimCounter)
         .unwrap_or(0);
     let next = current.checked_add(1).expect("claim counter overflow");
-    e.storage()
-        .persistent()
-        .set(&DataKey::ClaimCounter, &next);
+    e.storage().persistent().set(&DataKey::ClaimCounter, &next);
     next
 }
 
@@ -241,7 +239,7 @@ pub fn process_claims(
 
     let now = e.ledger().timestamp();
     let mut claims = get_pending_claims(e, user);
-    
+
     if claims.is_empty() {
         panic!("no pending claims");
     }
@@ -262,7 +260,11 @@ pub fn process_claims(
     let mut remaining_claims = Vec::new(e);
     let mut total_amount = 0i128;
     let mut processed_types = Vec::new(e);
-    let limit = if max_claims == 0 { MAX_BATCH_CLAIMS } else { max_claims.min(MAX_BATCH_CLAIMS) };
+    let limit = if max_claims == 0 {
+        MAX_BATCH_CLAIMS
+    } else {
+        max_claims.min(MAX_BATCH_CLAIMS)
+    };
 
     // Process claims
     for i in 0..claims.len() {
@@ -275,24 +277,24 @@ pub fn process_claims(
         }
 
         let claim = claims.get(i).unwrap();
-        
+
         // Skip expired claims
         if claim.expires_at > 0 && now > claim.expires_at {
             continue;
         }
-        
+
         // Skip if not in filter
         if filter_types && !type_set.contains_key(claim.claim_type) {
             remaining_claims.push_back(claim);
             continue;
         }
-        
+
         // Process this claim
         processed_claims.push_back(claim.clone());
         total_amount = total_amount
             .checked_add(claim.amount)
             .expect("claim total overflow");
-        
+
         // Track unique claim types
         let mut type_exists = false;
         for j in 0..processed_types.len() {
@@ -322,11 +324,11 @@ pub fn process_claims(
         e.storage()
             .persistent()
             .set(&DataKey::PendingClaims(user.clone()), &remaining_claims);
-        
+
         let remaining_amount = get_claimable_amount(e, user)
             .checked_sub(total_amount)
             .expect("claimable amount underflow");
-        
+
         e.storage()
             .persistent()
             .set(&DataKey::ClaimableAmount(user.clone()), &remaining_amount);
@@ -339,10 +341,9 @@ pub fn process_claims(
             .instance()
             .get(&DataKey::Token)
             .expect("token not configured");
-        
+
         let contract = e.current_contract_address();
-        soroban_sdk::token::TokenClient::new(e, &token)
-            .transfer(&contract, user, &total_amount);
+        soroban_sdk::token::TokenClient::new(e, &token).transfer(&contract, user, &total_amount);
     }
 
     let result = ClaimResult {
@@ -368,7 +369,7 @@ pub fn process_claims(
 pub fn cleanup_expired_claims(e: &Env, user: &Address) -> u32 {
     let now = e.ledger().timestamp();
     let claims = get_pending_claims(e, user);
-    
+
     if claims.is_empty() {
         return 0;
     }
@@ -379,7 +380,7 @@ pub fn cleanup_expired_claims(e: &Env, user: &Address) -> u32 {
 
     for i in 0..claims.len() {
         let claim = claims.get(i).unwrap();
-        
+
         if claim.expires_at > 0 && now > claim.expires_at {
             expired_amount = expired_amount
                 .checked_add(claim.amount)
@@ -403,11 +404,11 @@ pub fn cleanup_expired_claims(e: &Env, user: &Address) -> u32 {
             e.storage()
                 .persistent()
                 .set(&DataKey::PendingClaims(user.clone()), &valid_claims);
-            
+
             let remaining_amount = get_claimable_amount(e, user)
                 .checked_sub(expired_amount)
                 .expect("claimable amount underflow");
-            
+
             e.storage()
                 .persistent()
                 .set(&DataKey::ClaimableAmount(user.clone()), &remaining_amount);
@@ -431,13 +432,13 @@ pub fn cleanup_expired_claims(e: &Env, user: &Address) -> u32 {
 pub fn get_claims_summary(e: &Env, user: &Address) -> Map<ClaimType, i128> {
     let claims = get_pending_claims(e, user);
     let mut summary = Map::new(e);
-    
+
     for i in 0..claims.len() {
         let claim = claims.get(i).unwrap();
         let current = summary.get(claim.claim_type).unwrap_or(0);
         summary.set(claim.claim_type, current + claim.amount);
     }
-    
+
     summary
 }
 
@@ -475,26 +476,22 @@ pub fn get_claim_by_id(e: &Env, claim_id: u64) -> PendingClaim {
 /// * If claim has already been processed
 /// * If claim has expired
 /// * If token transfer fails
-pub fn process_claim_by_id(
-    e: &Env,
-    user: &Address,
-    claim_id: u64,
-) -> ClaimResult {
+pub fn process_claim_by_id(e: &Env, user: &Address, claim_id: u64) -> ClaimResult {
     user.require_auth();
 
     let now = e.ledger().timestamp();
     let mut claim = get_claim_by_id(e, claim_id);
-    
+
     // Check if claim has already been processed
     if claim.processed {
         panic!("claim already processed");
     }
-    
+
     // Check if claim has expired
     if claim.expires_at > 0 && now > claim.expires_at {
         panic!("claim has expired");
     }
-    
+
     // Verify the claim belongs to the user by checking their pending claims
     let user_claims = get_pending_claims(e, user);
     let mut claim_found = false;
@@ -505,20 +502,20 @@ pub fn process_claim_by_id(
             break;
         }
     }
-    
+
     if !claim_found {
         panic!("claim not owned by user");
     }
-    
+
     // Process the claim
     let total_amount = claim.amount;
-    
+
     // Mark claim as processed
     claim.processed = true;
     e.storage()
         .persistent()
         .set(&DataKey::ClaimById(claim_id), &claim);
-    
+
     // Remove from user's pending claims
     let mut remaining_claims = Vec::new(e);
     for i in 0..user_claims.len() {
@@ -527,7 +524,7 @@ pub fn process_claim_by_id(
             remaining_claims.push_back(user_claim);
         }
     }
-    
+
     // Update user's claims storage
     if remaining_claims.is_empty() {
         e.storage()
@@ -540,16 +537,16 @@ pub fn process_claim_by_id(
         e.storage()
             .persistent()
             .set(&DataKey::PendingClaims(user.clone()), &remaining_claims);
-        
+
         let remaining_amount = get_claimable_amount(e, user)
             .checked_sub(total_amount)
             .expect("claimable amount underflow");
-        
+
         e.storage()
             .persistent()
             .set(&DataKey::ClaimableAmount(user.clone()), &remaining_amount);
     }
-    
+
     // Transfer tokens to user
     if total_amount > 0 {
         let token: Address = e
@@ -557,25 +554,24 @@ pub fn process_claim_by_id(
             .instance()
             .get(&DataKey::Token)
             .expect("token not configured");
-        
+
         let contract = e.current_contract_address();
-        soroban_sdk::token::TokenClient::new(e, &token)
-            .transfer(&contract, user, &total_amount);
+        soroban_sdk::token::TokenClient::new(e, &token).transfer(&contract, user, &total_amount);
     }
-    
+
     let mut claim_types = Vec::new(e);
     claim_types.push_back(claim.claim_type);
-    
+
     let result = ClaimResult {
         processed_count: 1,
         total_amount,
         claim_types,
     };
-    
+
     // Emit events
     let processed_claims = Vec::from_array(e, [&claim]);
     events::emit_claims_processed(e, user, &result, &processed_claims);
-    
+
     result
 }
 
@@ -597,15 +593,15 @@ pub fn get_pending_claims_paginated(
 ) -> Vec<PendingClaim> {
     let all_claims = get_pending_claims(e, user);
     let actual_limit = limit.min(MAX_BATCH_CLAIMS);
-    
+
     let mut result = Vec::new(e);
     let start = offset.min(all_claims.len() as u32);
     let end = (start + actual_limit).min(all_claims.len() as u32);
-    
+
     for i in start..end {
         result.push_back(all_claims.get(i as usize).unwrap());
     }
-    
+
     result
 }
 
@@ -643,7 +639,7 @@ pub fn process_claims_paginated(
 
     let now = e.ledger().timestamp();
     let all_claims = get_pending_claims(e, user);
-    
+
     if all_claims.is_empty() || offset >= all_claims.len() as u32 {
         panic!("no claims to process at offset");
     }
@@ -673,23 +669,23 @@ pub fn process_claims_paginated(
         }
 
         let claim = all_claims.get(i).unwrap();
-        
+
         // Skip expired claims
         if claim.expires_at > 0 && now > claim.expires_at {
             continue;
         }
-        
+
         // Skip if not in filter
         if filter_types && !type_set.contains_key(claim.claim_type) {
             continue;
         }
-        
+
         // Process this claim
         processed_claims.push_back(claim.clone());
         total_amount = total_amount
             .checked_add(claim.amount)
             .expect("claim total overflow");
-        
+
         // Track unique claim types
         let mut type_exists = false;
         for j in 0..processed_types.len() {
@@ -701,7 +697,7 @@ pub fn process_claims_paginated(
         if !type_exists {
             processed_types.push_back(claim.claim_type);
         }
-        
+
         processed_count += 1;
     }
 
@@ -737,11 +733,11 @@ pub fn process_claims_paginated(
         e.storage()
             .persistent()
             .set(&DataKey::PendingClaims(user.clone()), &remaining_claims);
-        
+
         let remaining_amount = get_claimable_amount(e, user)
             .checked_sub(total_amount)
             .expect("claimable amount underflow");
-        
+
         e.storage()
             .persistent()
             .set(&DataKey::ClaimableAmount(user.clone()), &remaining_amount);
@@ -754,10 +750,9 @@ pub fn process_claims_paginated(
             .instance()
             .get(&DataKey::Token)
             .expect("token not configured");
-        
+
         let contract = e.current_contract_address();
-        soroban_sdk::token::TokenClient::new(e, &token)
-            .transfer(&contract, user, &total_amount);
+        soroban_sdk::token::TokenClient::new(e, &token).transfer(&contract, user, &total_amount);
     }
 
     let result = ClaimResult {

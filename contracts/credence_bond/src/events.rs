@@ -99,7 +99,11 @@ pub fn emit_claims_processed(
     _processed_claims: &soroban_sdk::Vec<crate::claims::PendingClaim>,
 ) {
     let topics = (Symbol::new(e, "claims_processed"), user.clone());
-    let data = (result.processed_count, result.total_amount, result.claim_types.clone());
+    let data = (
+        result.processed_count,
+        result.total_amount,
+        result.claim_types.clone(),
+    );
     e.events().publish(topics, data);
 }
 
@@ -143,7 +147,11 @@ pub fn emit_upgrade_auth_granted(
     address: &Address,
     role: crate::upgrade_auth::UpgradeRole,
 ) {
-    let topics = (Symbol::new(e, "upgrade_auth_granted"), admin.clone(), address.clone());
+    let topics = (
+        Symbol::new(e, "upgrade_auth_granted"),
+        admin.clone(),
+        address.clone(),
+    );
     e.events().publish(topics, role);
 }
 
@@ -154,7 +162,11 @@ pub fn emit_upgrade_auth_granted(
 /// * `Address` - The admin who revoked authorization
 /// * `Address` - The address whose authorization was revoked
 pub fn emit_upgrade_auth_revoked(e: &Env, admin: &Address, address: &Address) {
-    let topics = (Symbol::new(e, "upgrade_auth_revoked"), admin.clone(), address.clone());
+    let topics = (
+        Symbol::new(e, "upgrade_auth_revoked"),
+        admin.clone(),
+        address.clone(),
+    );
     e.events().publish(topics, ());
 }
 
@@ -206,6 +218,10 @@ pub fn emit_upgrade_executed(
     new_implementation: &Address,
     proposal_id: Option<u64>,
 ) {
-    let topics = (Symbol::new(e, "upgrade_executed"), executor.clone(), new_implementation.clone());
+    let topics = (
+        Symbol::new(e, "upgrade_executed"),
+        executor.clone(),
+        new_implementation.clone(),
+    );
     e.events().publish(topics, proposal_id);
 }
