@@ -6,6 +6,7 @@
 
 #![cfg(test)]
 
+use super::parameters::DEFAULT_MAX_LEVERAGE;
 use super::validation::{validate_bond_amount, MAX_BOND_AMOUNT, MIN_BOND_AMOUNT};
 use super::{CredenceBond, CredenceBondClient};
 use crate::test_helpers;
@@ -89,9 +90,10 @@ fn test_create_bond_with_valid_amount() {
     assert_eq!(bond.bonded_amount, MIN_BOND_AMOUNT);
     assert!(bond.active);
 
-    // Test with maximum valid amount
-    let bond2 = client.create_bond(&identity, &MAX_BOND_AMOUNT, &86400_u64);
-    assert_eq!(bond2.bonded_amount, MAX_BOND_AMOUNT);
+    // Test with the largest amount allowed under the default leverage cap.
+    let leverage_valid_amount = DEFAULT_MAX_LEVERAGE as i128 * MIN_BOND_AMOUNT;
+    let bond2 = client.create_bond(&identity, &leverage_valid_amount, &86400_u64);
+    assert_eq!(bond2.bonded_amount, leverage_valid_amount);
     assert!(bond2.active);
 }
 
