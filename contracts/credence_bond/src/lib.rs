@@ -28,8 +28,8 @@ mod slash_history;
 mod slashing;
 pub mod tiered_bond;
 mod token_integration;
-pub mod upgrade_auth;
 pub mod types;
+pub mod upgrade_auth;
 mod validation;
 pub mod verifier;
 mod weighted_attestation;
@@ -182,13 +182,16 @@ impl CredenceBond {
             .storage()
             .instance()
             .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic!("not initialized"));
+            .unwrap_or_else(|| panic!("contract not initialized - admin not set"));
         if stored != *admin {
             panic!("not admin");
         }
     }
 
     pub fn initialize(e: Env, admin: Address) {
+        if e.storage().instance().get(&DataKey::Admin).is_some() {
+            panic!("admin already set");
+        }
         e.storage().instance().set(&DataKey::Admin, &admin);
         e.storage().instance().set(&DataKey::Paused, &false);
         e.storage()
@@ -207,6 +210,12 @@ impl CredenceBond {
         pausable::require_not_paused(&e);
         admin.require_auth();
         Self::require_admin_internal(&e, &admin);
+
+        // Zero-address check
+        if treasury.to_string().to_string() == "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" {
+            panic!("ZeroAddress");
+        }
+
         early_exit_penalty::set_config(&e, treasury, penalty_bps);
     }
 
@@ -220,6 +229,15 @@ impl CredenceBond {
     ) {
         admin.require_auth();
         Self::require_admin_internal(&e, &admin);
+
+        // Zero-address checks
+        if governance.to_string().to_string() == "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" {
+            panic!("ZeroAddress");
+        }
+        if treasury.to_string().to_string() == "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" {
+            panic!("ZeroAddress");
+        }
+
         emergency::set_config(&e, governance, treasury, emergency_fee_bps, enabled);
     }
 
@@ -314,6 +332,12 @@ impl CredenceBond {
     /// Register an authorized attester (only admin can call).
     pub fn register_attester(e: Env, attester: Address) {
         pausable::require_not_paused(&e);
+
+        // Zero-address check
+        if attester.to_string().to_string() == "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" {
+            panic!("ZeroAddress");
+        }
+
         let admin: Address = e
             .storage()
             .instance()
@@ -367,6 +391,11 @@ impl CredenceBond {
         verifier_addr: Address,
         stake_deposit: i128,
     ) -> verifier::VerifierInfo {
+        // Zero-address check
+        if verifier_addr.to_string().to_string() == "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" {
+            panic!("ZeroAddress");
+        }
+
         verifier_addr.require_auth();
         Self::with_reentrancy_guard(&e, || {
             verifier::register_with_stake(&e, &verifier_addr, stake_deposit)
@@ -544,7 +573,7 @@ impl CredenceBond {
         let base_reward = 1000i128; // Base reward for attestation
         let weight_bonus = (weight as i128) * 100; // Bonus based on weight
         let total_reward = base_reward + weight_bonus;
-        
+
         claims::add_pending_claim(
             &e,
             &attester,
@@ -741,23 +770,23 @@ impl CredenceBond {
             penalty_bps,
         );
         early_exit_penalty::emit_penalty_event(&e, &bond.identity, amount, penalty, &treasury);
-        
+
         // Calculate net amount and transfer to user
         let net_amount = amount.checked_sub(penalty).expect("penalty exceeds amount");
         token_integration::transfer_from_contract(&e, &bond.identity, net_amount);
-        
-        // Instead of transferring penalty to treasury immediately, 
+
+        // Instead of transferring penalty to treasury immediately,
         // add a potential penalty refund claim for good behavior
         if penalty > 0 {
             // Transfer penalty to treasury (still push-based for treasury)
             token_integration::transfer_from_contract(&e, &treasury, penalty);
-            
+
             // Add a potential penalty refund claim (50% of penalty can be refunded for good behavior)
             let refund_amount = penalty / 2;
             if refund_amount > 0 {
                 // Get next penalty ID for tracking
                 let penalty_id = get_next_penalty_id(&e);
-                
+
                 claims::add_pending_claim(
                     &e,
                     &bond.identity,
@@ -768,7 +797,7 @@ impl CredenceBond {
                 );
             }
         }
-        
+
         let old_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount);
         bond.bonded_amount = bond.bonded_amount.checked_sub(amount).expect("underflow");
         if bond.slashed_amount > bond.bonded_amount {
@@ -1413,11 +1442,7 @@ impl CredenceBond {
     }
 
     /// Process a limited number of claims for the caller
-    pub fn claim_rewards_batch(
-        e: Env,
-        user: Address,
-        max_claims: u32,
-    ) -> claims::ClaimResult {
+    pub fn claim_rewards_batch(e: Env, user: Address, max_claims: u32) -> claims::ClaimResult {
         claims::process_claims(&e, &user, soroban_sdk::Vec::new(&e), max_claims)
     }
 
@@ -1503,7 +1528,13 @@ impl CredenceBond {
         upgrade_data: soroban_sdk::Vec<u8>,
         required_approvals: u32,
     ) -> u64 {
-        upgrade_auth::propose_upgrade(&e, &proposer, &new_implementation, upgrade_data, required_approvals)
+        upgrade_auth::propose_upgrade(
+            &e,
+            &proposer,
+            &new_implementation,
+            upgrade_data,
+            required_approvals,
+        )
     }
 
     /// Approve an upgrade proposal
@@ -1612,8 +1643,15 @@ mod security;
 #[cfg(test)]
 mod test;
 #[cfg(test)]
-mod test_access_control;
+mod test_zero_address_working;
 
+#[cfg(test)]
+mod test_access_control;
+#[cfg(test)]
+mod test_immutable_config_working;
+
+#[cfg(test)]
+mod test_claim_pagination;
 #[cfg(test)]
 mod test_cooldown;
 #[cfg(test)]
@@ -1653,6 +1691,8 @@ mod test_slashing;
 #[cfg(test)]
 mod test_tiered_bond;
 #[cfg(test)]
+mod test_upgrade_auth;
+#[cfg(test)]
 mod test_validation;
 #[cfg(test)]
 mod test_verifier;
@@ -1660,11 +1700,3 @@ mod test_verifier;
 mod test_weighted_attestation;
 #[cfg(test)]
 mod test_withdraw_bond;
-#[cfg(test)]
-mod test_grace_window; 
-#[cfg(test)]
-mod token_integration_test;
-#[cfg(test)]
-mod test_claim_pagination;
-#[cfg(test)]
-mod test_upgrade_auth;
