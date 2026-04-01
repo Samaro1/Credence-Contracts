@@ -114,6 +114,9 @@ pub enum DataKey {
     PauseProposal(u64),
     PauseApproval(u64, Address),
     PauseApprovalCount(u64),
+    PendingClaims(Address),
+    ClaimableAmount(Address),
+    ClaimCounter,
     BondToken,
     GraceWindow, // FIX 1: added for configurable post-expiry grace window
 }
@@ -402,6 +405,9 @@ impl CredenceBond {
     }
 
     pub fn create_bond(e: Env, identity: Address, amount: i128, duration: u64) -> IdentityBond {
+        validation::validate_bond_amount(amount);
+        validation::validate_bond_duration(duration);
+        leverage::validate_leverage(amount, parameters::get_max_leverage(&e));
         Self::create_bond_with_rolling(e, identity, amount, duration, false, 0)
     }
 
@@ -532,7 +538,7 @@ impl CredenceBond {
         let base_reward = 1000i128; // Base reward for attestation
         let weight_bonus = (weight as i128) * 100; // Bonus based on weight
         let total_reward = base_reward + weight_bonus;
-        
+
         claims::add_pending_claim(
             &e,
             &attester,
@@ -728,23 +734,23 @@ impl CredenceBond {
             penalty_bps,
         );
         early_exit_penalty::emit_penalty_event(&e, &bond.identity, amount, penalty, &treasury);
-        
+
         // Calculate net amount and transfer to user
         let net_amount = amount.checked_sub(penalty).expect("penalty exceeds amount");
         token_integration::transfer_from_contract(&e, &bond.identity, net_amount);
-        
-        // Instead of transferring penalty to treasury immediately, 
+
+        // Instead of transferring penalty to treasury immediately,
         // add a potential penalty refund claim for good behavior
         if penalty > 0 {
             // Transfer penalty to treasury (still push-based for treasury)
             token_integration::transfer_from_contract(&e, &treasury, penalty);
-            
+
             // Add a potential penalty refund claim (50% of penalty can be refunded for good behavior)
             let refund_amount = penalty / 2;
             if refund_amount > 0 {
                 // Get next penalty ID for tracking
-                let penalty_id = get_next_penalty_id(&e);
-                
+                let penalty_id = Self::get_next_penalty_id(&e);
+
                 claims::add_pending_claim(
                     &e,
                     &bond.identity,
@@ -755,7 +761,7 @@ impl CredenceBond {
                 );
             }
         }
-        
+
         let old_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount);
         bond.bonded_amount = bond.bonded_amount.checked_sub(amount).expect("underflow");
         if bond.slashed_amount > bond.bonded_amount {
@@ -942,13 +948,8 @@ impl CredenceBond {
     }
 
     pub fn top_up(e: Env, amount: i128) -> IdentityBond {
-        // Validate the top-up amount meets minimum requirements
-        if amount < validation::MIN_BOND_AMOUNT {
-            panic!(
-                "top-up amount below minimum required: {} (minimum: {})",
-                amount,
-                validation::MIN_BOND_AMOUNT
-            );
+        if amount <= 0 {
+            panic!("amount must be positive");
         }
 
         let key = DataKey::Bond;
@@ -1162,7 +1163,7 @@ impl CredenceBond {
             active: false,
             is_rolling: bond.is_rolling,
             withdrawal_requested_at: bond.withdrawal_requested_at,
-            notice_period_duration: bond.notice_period_duration, // FIX 3: correct field name
+            notice_period_duration: bond.notice_period_duration,
         };
         e.storage().instance().set(&bond_key, &updated);
         let cb_key = Symbol::new(&e, "callback");
@@ -1218,7 +1219,7 @@ impl CredenceBond {
             active: bond.active,
             is_rolling: bond.is_rolling,
             withdrawal_requested_at: bond.withdrawal_requested_at,
-            notice_period_duration: bond.notice_period_duration, // FIX 3: correct field name
+            notice_period_duration: bond.notice_period_duration,
         };
         e.storage().instance().set(&bond_key, &updated);
         let cb_key = Symbol::new(&e, "callback");
@@ -1400,11 +1401,7 @@ impl CredenceBond {
     }
 
     /// Process a limited number of claims for the caller
-    pub fn claim_rewards_batch(
-        e: Env,
-        user: Address,
-        max_claims: u32,
-    ) -> claims::ClaimResult {
+    pub fn claim_rewards_batch(e: Env, user: Address, max_claims: u32) -> claims::ClaimResult {
         claims::process_claims(&e, &user, soroban_sdk::Vec::new(&e), max_claims)
     }
 
@@ -1449,6 +1446,12 @@ mod security;
 mod test;
 #[cfg(test)]
 mod test_access_control;
+#[cfg(test)]
+mod test_attestation;
+#[cfg(test)]
+mod test_attestation_types;
+#[cfg(test)]
+mod test_batch;
 
 #[cfg(test)]
 mod test_cooldown;
@@ -1466,6 +1469,8 @@ mod test_evidence;
 mod test_fees;
 #[cfg(test)]
 mod test_governance_approval;
+#[cfg(test)]
+mod test_grace_period;
 #[cfg(test)]
 mod test_helpers;
 #[cfg(test)]
